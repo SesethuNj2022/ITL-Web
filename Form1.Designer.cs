@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Resources;
-using System.Windows.Forms;
+﻿using System.Resources;
+using System.Text;
 using WinFormsApplication.Properties;
 
 namespace WinFormsApplication
@@ -18,12 +14,15 @@ namespace WinFormsApplication
     }
     public partial class Form1 : Form
     {
-        // Declare resources object to access image resources
         private static readonly ResourceManager resources = new ResourceManager(typeof(Resources));
         private DataGridView dataGridView1;
+        private readonly HttpClient _httpClient;
+
         public Form1()
         {
             InitializeComponent();
+            _httpClient = new HttpClient();
+
         }
 
         private void InitializeComponent()
@@ -128,7 +127,7 @@ namespace WinFormsApplication
             PerformLayout();
         }
 
-        private void btnUpload_Click(object sender, EventArgs e)
+        private async void btnUpload_Click(object sender, EventArgs e)
         {
             using (OpenFileDialog openFileDialog = new OpenFileDialog())
             {
@@ -139,21 +138,33 @@ namespace WinFormsApplication
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
                     string filePath = openFileDialog.FileName;
-                    ProcessCSVFile(filePath);
-                    List<string[]> csvData = ParseCSV(filePath);
 
-                    if (csvData.Any())
+                    try
                     {
-                       // DisplayAnalysisResult(csvData);
-                        PopulateDataGridView(csvData);
-                        dataGridView1.Visible = true;
-                        listBox1.Visible = true;
+                        string[] lines = File.ReadAllLines(filePath);
 
+                        var csvContent = string.Join("\n", lines);
 
+                        string apiUrl = "http://localhost:7138/"; 
+                        HttpResponseMessage response;
+                        using (var client = new HttpClient())
+                        {
+                            var content = new StringContent(csvContent, Encoding.UTF8, "application/csv");
+                            response = await client.PostAsync(apiUrl, content);
+                        }
+                        if (response.IsSuccessStatusCode)
+                        {
+                            string jsonResponse = await response.Content.ReadAsStringAsync();
+                            MessageBox.Show(jsonResponse, "Analysis Results", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show("Failed to upload CSV file.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        MessageBox.Show("No data found in the CSV file.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
             }
@@ -255,13 +266,12 @@ namespace WinFormsApplication
         private List<Record> ParseCSVData(string[] lines)
         {
             var records = new List<Record>();
-            foreach (string line in lines.Skip(1)) // Skip header
+            foreach (string line in lines.Skip(1)) 
             {
                 try
                 {
                     string[] cells = line.Split(',');
 
-                    // Validate and parse each field
                     string productCode = cells[0].Trim();
                     int quantity;
                     if (!int.TryParse(cells[1].Trim(), out quantity))
@@ -295,7 +305,6 @@ namespace WinFormsApplication
                 }
                 catch (Exception ex)
                 {
-                    // Log or display error message
                     MessageBox.Show($"Error parsing CSV line: {line}\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
